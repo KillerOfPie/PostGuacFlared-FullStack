@@ -47,8 +47,8 @@ x-env: &env
 x-Base: &Base
   <<: *env
   restart: $${RESTART:-$${PROD+always}:-unless-stopped} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
-  profiles:
-    - Guacamole
+  #profiles:
+    #- Guacamole
   #pull_policy: "missing"
   #deploy:
     #update_config:
@@ -119,8 +119,8 @@ services:
     privileged: true
     env_file:
       - $${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
-    profiles:
-      - Avocado
+    #profiles:
+      #- Avocado
     configs:
       - source: guac_d_conf
         target: /etc/guacamole/guacd.conf
