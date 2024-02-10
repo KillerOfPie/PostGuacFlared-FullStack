@@ -46,7 +46,7 @@ x-env: &env
 
 x-Base: &Base
   <<: *env
-  restart: $${RESTART:-${PROD+always}:-unless-stopped} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
+  restart: $${RESTART:-$${PROD+always}:-unless-stopped} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
   profiles:
     - Guacamole
   pull_policy: "missing"
