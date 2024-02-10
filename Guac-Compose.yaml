@@ -64,10 +64,11 @@ x-Base: &Base
       #monitor: 60s
       #max_failure_ratio: 0.3
 
-  x-FrontNet: &BackNet
+  x-BackNet: &BackNet
     networks:
       - AvocadoFarm
-  x-BackNet: &FrontNet
+
+  x-FrontNet: &FrontNet
     networks:
       - FarmBreak
 
