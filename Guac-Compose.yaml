@@ -4,11 +4,11 @@ name: "post-guac-flared"
 
 x-env: &env
   environment:
-    GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION: "compose-variables.env"
-    GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION: "django-variables.env"
-    GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION: "database-variables.env"
-    GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION: "guacozy-variables.env"
-    GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION: "cloudflared-variables.env"
+    GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION: "./pie-vars.env"
+    GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION: ""
+    GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION: ""
+    GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION: ""
+    GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION: ""
 
     CLOUDFLARED.VOLUME.SOURCE: "cloudflared-vol"
 
@@ -47,22 +47,24 @@ x-env: &env
 x-Base: &Base
   <<: *env
   restart: $${RESTART:-$${PROD+always}:-unless-stopped} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
+  env_file:
+    - $${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION:+$${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}}
   #profiles:
-    #- Guacamole
+  #- Guacamole
   #pull_policy: "missing"
   #deploy:
-    #update_config:
-      #parallelism: 0
-      #delay: 2s
-      #failure_action: rollback
-      #monitor: 60s
-      #max_failure_ratio: 0.3
-    #rollback_config:
-      #parallelism: 0
-      #delay: 2s
-      #failure_action: pause
-      #monitor: 60s
-      #max_failure_ratio: 0.3
+  #update_config:
+  #parallelism: 0
+  #delay: 2s
+  #failure_action: rollback
+  #monitor: 60s
+  #max_failure_ratio: 0.3
+  #rollback_config:
+  #parallelism: 0
+  #delay: 2s
+  #failure_action: pause
+  #monitor: 60s
+  #max_failure_ratio: 0.3
 
   x-BackNet: &BackNet
     networks:
@@ -80,8 +82,7 @@ services:
     volumes:
       - postgres-db:/bitnami/postgresql
     env_file:
-      - $${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
-      - $${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION}
+      - $${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION:+$${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION}}
     environment:
       - POSTGRES_DATABASE=$${DATABASE.NAME:-"guacamole"}
       - POSTGRES_USER=$${DATABASE.USER:-"getguaced"}
@@ -93,9 +94,8 @@ services:
     container_name: Guacozy
     image: guacozy/guacozy-server:latest
     env_file:
-      - $${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
-      - $${GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION}
-      - $${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION}
+      - $${GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION:+$${GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION}}
+      - $${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION:+$${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION}}
     environment:
       - DJANGO_SECRET_KEY=$${GUACOZY.DJANGO.SECRET_KEY:?Django Secret Key is required}
       - FIELD_ENCRYPTION_KEY=$${GUACOZY.DJANGO.FIELD_ENCRYPTION_KEY:?Django Field Encryption Key is required}
@@ -118,10 +118,8 @@ services:
     image: guacamole/guacd:latest
     network_mode: "[Guacozy]"
     privileged: true
-    env_file:
-      - $${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
     #profiles:
-      #- Avocado
+    #- Avocado
     configs:
       - source: guac_d_conf
         target: /etc/guacamole/guacd.conf
@@ -135,8 +133,7 @@ services:
     image: cloudflare/cloudflared:latest
     command: "docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token $${CLOUDFLARED.TUNNEL_TOKEN}"
     env_file:
-      - $${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
-      - $${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION}
+      - $${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION:+$${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION}}
     environment:
       - TUNNEL_TOKEN=$${CLOUDFLARED.TUNNEL_TOKEN}
     volumes:
