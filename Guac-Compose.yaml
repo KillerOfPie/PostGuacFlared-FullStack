@@ -76,6 +76,8 @@ services:
     <<: [*Base, *BackNet]
     container_name: PostGuac
     image: rapidfort/postgresql:latest
+    volumes:
+      - postgres-db:/bitnami/postgresql
     env_file:
       - $${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
       - $${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION}
@@ -137,7 +139,7 @@ services:
     environment:
       - TUNNEL_TOKEN=$${CLOUDFLARED.TUNNEL_TOKEN}
     volumes:
-      - cloudflared-vol
+      - cloudflared-vol:/etc/cloudflared
 
 networks:
   FarmBreak:
