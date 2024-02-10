@@ -171,11 +171,11 @@ configs:
           <!-- Appender for debugging -->
           <appender name="GUAC-DEBUG" class="ch.qos.logback.core.ConsoleAppender">
               <encoder>
-                  <pattern>${GUAC.LOGBACK.PATTERN:-"%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"}</pattern>
+                  <pattern>$${GUAC.LOGBACK.PATTERN:-"%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"}</pattern>
               </encoder>
           </appender>
           <!-- Log at DEBUG level -->
-          <root level="${GUAC.LOGBACK.LOG_LEVEL:-info}">
+          <root level="$${GUAC.LOGBACK.LOG_LEVEL:-info}">
               <appender-ref ref="GUAC-DEBUG"/>
           </root>
       </configuration>
