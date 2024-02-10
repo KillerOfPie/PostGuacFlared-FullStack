@@ -146,10 +146,10 @@ services:
 
 networks:
   FarmBreak:
-    name: ${NETWORK.EXTERNAL_NAME:-"FrontNet"}
+    name: "${NETWORK.EXTERNAL_NAME:-FrontNet}"
     external: true
   AvocadoFarm:
-    name: ${NETWORK.INTERNAL_NAME:-"BackNet"}
+    name: "${NETWORK.INTERNAL_NAME:-BackNet}"
     external: true
 
 configs:
