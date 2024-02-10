@@ -1,0 +1,199 @@
+---
+version: "2"
+name: AnyAppWebDeploy
+
+web:
+  environment:
+    #- GLOBAL.DATA_DRIVE_NAME="GuacBowl"
+    #- GLOBAL.MAIN_DRIVE_NAME="ChipBag"
+    - GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION="compose-variables.env"
+    - GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION="compose-variables.env"
+    - GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION="compose-variables.env"
+    - GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION="compose-variables.env"
+    - GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION="compose-variables.env"
+
+    - CLOUDFLARED.VOLUME.SOURCE="./cloudflared"
+
+    - GUAC_D.LOG_LEVEL="info"
+    - GUAC_D.BIND_HOST="localhost"
+    - GUAC_D.BIND_PORT=4822
+    - GUAC_D.SERVER_CERT_LOCATION="/etc/ssl/certs/guacd.crt"
+    - GUAC_D.SERVER_KEY_LOCATION="/etc/ssl/private/guacd.key"
+    - GUAC_D.USE_SSL="false"
+
+    - GUAC.GUACAMOLE_HOME="/etc/guacamole"
+    - GUAC.GUAC_D.CONN_HOST=${GUAC_D.BIND_HOST}
+    - GUAC.GUAC_D.CONN_PORT=${GUAC_D.BIND_PORT}
+    - GUAC.GUAC_D.CONN_SSL=${GUAC_D.USE_SSL}
+    - GUAC.ENABLE_ENV_PROPERTIES="true"
+    - GUAC.API_SESSION_TIMEOUT="60"
+    - GUAC.AVAILABLE_LANGUAGES="en, de, es"
+    - GUAC.EXPOSED_PORT.HTTP="10080"
+    - GUAC.EXPOSED_PORT.HTTPS="10443"
+
+    - GUACOZY.DJANGO.SECRET_KEY=""
+    - GUACOZY.DJANGO.FIELD_ENCRYPTION_KEY=""
+    - GUACOZY.DJANGO.DATABASE_HOST="PostGuac"
+    - GUACOZY.DJANGO.DATABASE_PORT="5432"
+    - GUACOZY.DJANGO.DJANGO_ALLOWED_HOSTS="*"
+
+    - GUAC.LOGBACK.LOG_LEVEL="info"
+    - GUAC.LOGBACK.PATTERN="%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+    - DATABASE_VOLUME_NAME="postgres-db"
+    - DATABASE.NAME="guacamole"
+    - DATABASE.USER="getguaced"
+    - DATABASE.PASSWORD_FILE=""
+    - DATABASE.PASSWORD="herecomestheguac"
+  env_file:
+    - ${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
+    - ${GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION}
+    - ${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION}
+    - ${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION}
+    - ${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION}
+
+x-Base: &Base
+  restart: ${RESTART:-${PROD+always}:-unless-stopped} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
+  profiles:
+    - Guacamole
+  pull_policy: "missing"
+  deploy:
+    rollback_config:
+      parallelism: 0
+      delay: 2s
+      failure_action: pause
+      monitor: 60s
+      max_failure_ratio: 0.3
+    update_config:
+      parallelism: 0
+      delay: 2s
+      failure_action: rollback
+      monitor: 60s
+      max_failure_ratio: 0.3
+
+x-FrontNet: &BackNet
+  networks:
+    - AvocadoFarm
+x-BackNet: &FrontNet
+  networks:
+    - FarmBreak
+
+services:
+  GuacD:
+    <<: *Base
+    container_name: GuacD
+    image: guacamole/guacd:latest
+    network_mode: "service:[Guacozy]"
+    privileged: true
+    profiles:
+      - Avacado
+    configs:
+      - source: guac_d_conf
+        target: /etc/guacamole/guacd.conf
+    secrets:
+      - guac_transit_cert
+      - guac_transit_key
+
+  Guacozy:
+    <<: [*Base, *FrontNet, *BackNet]
+    container_name: Guacozy
+    image: guacozy/guacozy-server:latest
+    env_file:
+      - ${GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION}
+      - ${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION}
+    environment:
+      - DJANGO_SECRET_KEY=${GUACOZY.DJANGO.SECRET_KEY:?Django Secret Key is required}
+      - FIELD_ENCRYPTION_KEY=${GUACOZY.DJANGO.FIELD_ENCRYPTION_KEY:?Django Field Encryption Key is required}
+      - DJANGO_DB_URL=postgres://${GUACOZY.DJANGO.DATABASE_HOST:?Django Postgres Database Host is required}:${GUACOZY.DJANGO.DATABASE_PORT:?Django Postgres Database Port is required}
+      - DJANGO_ALLOWED_HOSTS=${GUACOZY.DJANGO.DJANGO_ALLOWED_HOSTS:-"*"}
+    ports:
+      - ${GUAC.EXPOSED_PORT.HTTP:-10080}:80
+      - ${GUAC.EXPOSED_PORT.HTTP:-10443}:443
+    configs:
+      - source: guac_conf
+        target: ${GUAC.GUACAMOLE_HOME}/guacamole.properties
+      - source: guac_logback_config
+        target: ${GUAC.GUACAMOLE_HOME}/logback.xml
+    depends_on:
+      - Postgres-LA
+
+  PostGuac:
+    <<: [*Base, *BackNet]
+    container_name: PostGuac
+    image: rapidfort/postgresql:latest
+    env_file:
+      - ${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION}
+    environment:
+      - POSTGRES_DATABASE=${DATABASE.NAME:-"guacamole"}
+      - POSTGRES_USER=${DATABASE.USER:-"getguaced"}
+      - POSTGRESQL_PASSWORD=${DATABASE.PASSWORD-"herecomestheguac"}
+      - POSTGRESQL_PASSWORD_FILE=${DATABASE.PASSWORD_FILE}
+
+  GuacFlared:
+    <<: [*Base, *FrontNet, *BackNet]
+    container_name: GuacFlared
+    image: cloudflare/cloudflared:latest
+    env_file:
+      - ${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION}
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    volumes:
+      - ${CLOUDFLARED.VOLUME.SOURCE:-"./cloudflared"}:/etc/cloudflared
+
+networks:
+  FarmBreak:
+    name: ${NETWORK.EXTERNAL_NAME:-"FrontNet"}
+    external: true
+  AvocadoFarm:
+    name: ${NETWORK.INTERNAL_NAME:-"BackNet"}
+    external: true
+
+configs:
+  guac_d_conf:
+    content: |
+      [daemon]
+      pid_file = /var/run/guacd.pid
+      log_level = ${GUAC_D.LOG_LEVEL:-info}
+      [server]
+      bind_host = ${GUAC_D.BIND_HOST:-localhost}
+      bind_port = ${GUAC_D.BIND_PORT:-4822}
+      [ssl]
+      server_certificate = ${GUAC_D.SERVER_CERT_LOCATION}
+      server_key = ${GUAC_D.SERVER_KEY_LOCATION}
+
+  guac_logback_config:
+    content: |
+      <configuration>
+          <!-- Appender for debugging -->
+          <appender name="GUAC-DEBUG" class="ch.qos.logback.core.ConsoleAppender">
+              <encoder>
+                  <pattern>${GUAC.LOGBACK.PATTERN:-%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n}</pattern>
+              </encoder>
+          </appender>
+          <!-- Log at DEBUG level -->
+          <root level="${GUAC.LOGBACK.LOG_LEVEL:-info}">
+              <appender-ref ref="GUAC-DEBUG"/>
+          </root>
+      </configuration>
+
+  guacozy_conf:
+    content: |
+      api-session-timeout: ${GUAC.API_SESSION_TIMEOUT:-60}
+      available-languages: ${GUAC.AVAILABLE_LANGUAGES:-"en, de, es"}
+      enable-environment-properties: ${GUAC.ENABLE_ENV_PROPERTIES:-true}
+      guacd-hostname: ${GUAC.GUAC_D.CONN_HOST:-localhost}
+      guacd-port: ${GUAC.GUAC_D.BIND_PORT:-4822}
+      guacd-ssl: ${GUAC.GUAC_D.USE_SSL:-false}
+
+volumes:
+  postgres-db:
+    name: ${DATABASE_VOLUME_NAME:-"postgres-db"}
+    external: true
+
+secrets:
+  guac_transit_cert:
+    external: true
+    name: "${GUAC_CERTIFICATE}"
+  guac_transit_key:
+    external: true
+    name: "${GUAC_CERTIFICATE_KEY}"
