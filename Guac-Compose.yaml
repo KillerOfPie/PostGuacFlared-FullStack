@@ -1,8 +1,8 @@
 ---
 version: "2"
-name: AnyAppWebDeploy
+name: "post-guac-flared"
 
-web:
+x-env: &env
   environment:
     #- GLOBAL.DATA_DRIVE_NAME="GuacBowl"
     #- GLOBAL.MAIN_DRIVE_NAME="ChipBag"
@@ -22,9 +22,9 @@ web:
     - GUAC_D.USE_SSL="false"
 
     - GUAC.GUACAMOLE_HOME="/etc/guacamole"
-    - GUAC.GUAC_D.CONN_HOST=${GUAC_D.BIND_HOST}
-    - GUAC.GUAC_D.CONN_PORT=${GUAC_D.BIND_PORT}
-    - GUAC.GUAC_D.CONN_SSL=${GUAC_D.USE_SSL}
+    - GUAC.GUAC_D.CONN_HOST="$${GUAC_D.BIND_HOST}"
+    - GUAC.GUAC_D.CONN_PORT="$${GUAC_D.BIND_PORT}"
+    - GUAC.GUAC_D.CONN_SSL="$${GUAC_D.USE_SSL}"
     - GUAC.ENABLE_ENV_PROPERTIES="true"
     - GUAC.API_SESSION_TIMEOUT="60"
     - GUAC.AVAILABLE_LANGUAGES="en, de, es"
@@ -52,33 +52,33 @@ web:
     - ${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION}
     - ${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION}
 
-x-Base: &Base
-  restart: ${RESTART:-${PROD+always}:-unless-stopped} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
-  profiles:
-    - Guacamole
-  pull_policy: "missing"
-  deploy:
-    rollback_config:
-      parallelism: 0
-      delay: 2s
-      failure_action: pause
-      monitor: 60s
-      max_failure_ratio: 0.3
-    update_config:
-      parallelism: 0
-      delay: 2s
-      failure_action: rollback
-      monitor: 60s
-      max_failure_ratio: 0.3
-
-x-FrontNet: &BackNet
-  networks:
-    - AvocadoFarm
-x-BackNet: &FrontNet
-  networks:
-    - FarmBreak
-
 services:
+  x-Base: &Base
+    <<: *env
+    restart: ${RESTART:-${PROD+always}:-unless-stopped} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
+    profiles:
+      - Guacamole
+    pull_policy: "missing"
+    deploy:
+      rollback_config:
+        parallelism: 0
+        delay: 2s
+        failure_action: pause
+        monitor: 60s
+        max_failure_ratio: 0.3
+      update_config:
+        parallelism: 0
+        delay: 2s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+
+  x-FrontNet: &BackNet
+    networks:
+      - AvocadoFarm
+  x-BackNet: &FrontNet
+    networks:
+      - FarmBreak
   GuacD:
     <<: *Base
     container_name: GuacD
@@ -146,10 +146,10 @@ services:
 
 networks:
   FarmBreak:
-    name: "${NETWORK.EXTERNAL_NAME:-FrontNet}"
+    name: ${NETWORK.EXTERNAL_NAME:-"FrontNet"}
     external: true
   AvocadoFarm:
-    name: "${NETWORK.INTERNAL_NAME:-BackNet}"
+    name: ${NETWORK.INTERNAL_NAME:-"BackNet"}
     external: true
 
 configs:
@@ -171,7 +171,7 @@ configs:
           <!-- Appender for debugging -->
           <appender name="GUAC-DEBUG" class="ch.qos.logback.core.ConsoleAppender">
               <encoder>
-                  <pattern>$${GUAC.LOGBACK.PATTERN:-"%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"}</pattern>
+                  <pattern>"$${GUAC.LOGBACK.PATTERN:-\"%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n\"}"</pattern>
               </encoder>
           </appender>
           <!-- Log at DEBUG level -->
