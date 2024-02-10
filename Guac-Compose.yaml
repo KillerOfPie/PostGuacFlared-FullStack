@@ -7,12 +7,12 @@ web:
     #- GLOBAL.DATA_DRIVE_NAME="GuacBowl"
     #- GLOBAL.MAIN_DRIVE_NAME="ChipBag"
     - GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION="compose-variables.env"
-    - GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION="compose-variables.env"
-    - GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION="compose-variables.env"
-    - GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION="compose-variables.env"
-    - GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION="compose-variables.env"
+    - GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION="django-variables.env"
+    - GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION="database-variables.env"
+    - GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION="guacozy-variables.env"
+    - GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION="cloudflared-variables.env"
 
-    - CLOUDFLARED.VOLUME.SOURCE="./cloudflared"
+    - CLOUDFLARED.VOLUME.SOURCE="cloudflared-vol"
 
     - GUAC_D.LOG_LEVEL="info"
     - GUAC_D.BIND_HOST="localhost"
@@ -86,7 +86,7 @@ services:
     network_mode: "service:[Guacozy]"
     privileged: true
     profiles:
-      - Avacado
+      - Avocado
     configs:
       - source: guac_d_conf
         target: /etc/guacamole/guacd.conf
@@ -99,6 +99,7 @@ services:
     container_name: Guacozy
     image: guacozy/guacozy-server:latest
     env_file:
+      - ${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
       - ${GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION}
       - ${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION}
     environment:
@@ -115,13 +116,14 @@ services:
       - source: guac_logback_config
         target: ${GUAC.GUACAMOLE_HOME}/logback.xml
     depends_on:
-      - Postgres-LA
+      - PostGuac
 
   PostGuac:
     <<: [*Base, *BackNet]
     container_name: PostGuac
     image: rapidfort/postgresql:latest
     env_file:
+      - ${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
       - ${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION}
     environment:
       - POSTGRES_DATABASE=${DATABASE.NAME:-"guacamole"}
@@ -133,10 +135,12 @@ services:
     <<: [*Base, *FrontNet, *BackNet]
     container_name: GuacFlared
     image: cloudflare/cloudflared:latest
+    command: "docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token ${CLOUDFLARED.TUNNEL_TOKEN}"
     env_file:
+      - ${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}
       - ${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION}
     environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+      - TUNNEL_TOKEN=${CLOUDFLARED.TUNNEL_TOKEN}
     volumes:
       - ${CLOUDFLARED.VOLUME.SOURCE:-"./cloudflared"}:/etc/cloudflared
 
