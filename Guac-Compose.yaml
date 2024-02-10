@@ -50,19 +50,19 @@ x-Base: &Base
   profiles:
     - Guacamole
   pull_policy: "missing"
-  deploy:
-    rollback_config:
-      parallelism: 0
-      delay: 2s
-      failure_action: pause
-      monitor: 60s
-      max_failure_ratio: 0.3
-    update_config:
-      parallelism: 0
-      delay: 2s
-      failure_action: rollback
-      monitor: 60s
-      max_failure_ratio: 0.3
+  #deploy:
+    #update_config:
+      #parallelism: 0
+      #delay: 2s
+      #failure_action: rollback
+      #monitor: 60s
+      #max_failure_ratio: 0.3
+    #rollback_config:
+      #parallelism: 0
+      #delay: 2s
+      #failure_action: pause
+      #monitor: 60s
+      #max_failure_ratio: 0.3
 
   x-FrontNet: &BackNet
     networks:
