@@ -1,154 +1,93 @@
 ---
-version: "3"
+version: "3.8"
 name: "post-guac-flared"
 
-x-env: &env
-  environment:
-    GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION: "./pie-vars.env"
-    GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION: ""
-    GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION: ""
-    GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION: ""
-    GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION: ""
+x-backnet: &backnet
+  networks:
+    - avocado-farm
 
-    CLOUDFLARED.VOLUME.SOURCE: "cloudflared-vol"
+x-frontnet: &frontnet
+  networks:
+    - farm-break
 
-    GUAC_D.LOG_LEVEL: "info"
-    GUAC_D.BIND_HOST: "localhost"
-    GUAC_D.BIND_PORT: 4822
-    GUAC_D.SERVER_CERT_LOCATION: "/etc/ssl/certs/guacd.crt"
-    GUAC_D.SERVER_KEY_LOCATION: "/etc/ssl/private/guacd.key"
-    GUAC_D.USE_SSL: "false"
-
-    GUAC.GUACAMOLE_HOME: "/etc/guacamole"
-    GUAC.GUAC_D.CONN_HOST: "$${GUAC_D.BIND_HOST}"
-    GUAC.GUAC_D.CONN_PORT: "$${GUAC_D.BIND_PORT}"
-    GUAC.GUAC_D.CONN_SSL: "$${GUAC_D.USE_SSL}"
-    GUAC.ENABLE_ENV_PROPERTIES: "true"
-    GUAC.API_SESSION_TIMEOUT: "60"
-    GUAC.AVAILABLE_LANGUAGES: "en, de, es"
-    GUAC.EXPOSED_PORT.HTTP: "10080"
-    GUAC.EXPOSED_PORT.HTTPS: "10443"
-
-    GUACOZY.DJANGO.SECRET_KEY: ""
-    GUACOZY.DJANGO.FIELD_ENCRYPTION_KEY: ""
-    GUACOZY.DJANGO.DATABASE_HOST: "PostGuac"
-    GUACOZY.DJANGO.DATABASE_PORT: "5432"
-    GUACOZY.DJANGO.DJANGO_ALLOWED_HOSTS: "*"
-
-    GUAC.LOGBACK.LOG_LEVEL: "info"
-    GUAC.LOGBACK.PATTERN: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
-
-    DATABASE_VOLUME_NAME: "postgres-db"
-    DATABASE.NAME: "guacamole"
-    DATABASE.USER: "getguaced"
-    DATABASE.PASSWORD_FILE: ""
-    DATABASE.PASSWORD: "herecomestheguac"
-
-x-Base: &Base
-  <<: *env
-  restart: $${RESTART:-$${PROD+always}:-unless-stopped} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
-  env_file:
-    - $${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION:+$${GLOBAL.ENV_VAR_FILE.COMPOSE.LOCATION}}
-  #profiles:
-  #- Guacamole
-  #pull_policy: "missing"
-  #deploy:
-  #update_config:
-  #parallelism: 0
-  #delay: 2s
-  #failure_action: rollback
-  #monitor: 60s
-  #max_failure_ratio: 0.3
-  #rollback_config:
-  #parallelism: 0
-  #delay: 2s
-  #failure_action: pause
-  #monitor: 60s
-  #max_failure_ratio: 0.3
-
-  x-BackNet: &BackNet
-    networks:
-      - AvocadoFarm
-
-  x-FrontNet: &FrontNet
-    networks:
-      - FarmBreak
+x-base: &base
+  restart: ${RESTART:-${PROD:-unless-stopped}} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
 
 services:
-  PostGuac:
-    <<: [*Base, *BackNet]
-    container_name: PostGuac
+  postguac:
+    <<: [*base, *backnet]
+    container_name: postguac
     image: rapidfort/postgresql:latest
     volumes:
       - postgres-db:/bitnami/postgresql
-    env_file:
-      - $${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION:+$${GLOBAL.ENV_VAR_FILE.DATABASE.LOCATION}}
     environment:
-      - POSTGRES_DATABASE=$${DATABASE.NAME:-"guacamole"}
-      - POSTGRES_USER=$${DATABASE.USER:-"getguaced"}
-      - POSTGRESQL_PASSWORD=$${DATABASE.PASSWORD-"herecomestheguac"}
-      - POSTGRESQL_PASSWORD_FILE=$${DATABASE.PASSWORD_FILE}
+      - "POSTGRES_DATABASE=$${DATABASE.NAME:-guacamole}"
+      - "POSTGRES_USER=$${DATABASE.USER:-getguaced}"
+      - "POSTGRESQL_PASSWORD=$${DATABASE.PASSWORD:-herecomestheguac}"
+      - "POSTGRESQL_PASSWORD_FILE=$${DATABASE.PASSWORD_FILE}"
 
-  Guacozy:
-    <<: [*Base, *FrontNet, *BackNet]
-    container_name: Guacozy
+  guacozy:
+    <<: [*base, *frontnet, *backnet] #
+    container_name: guacozy
     image: guacozy/guacozy-server:latest
-    env_file:
-      - $${GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION:+$${GLOBAL.ENV_VAR_FILE.DJANGO.LOCATION}}
-      - $${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION:+$${GLOBAL.ENV_VAR_FILE.GUACOZY.LOCATION}}
     environment:
-      - DJANGO_SECRET_KEY=$${GUACOZY.DJANGO.SECRET_KEY:?Django Secret Key is required}
-      - FIELD_ENCRYPTION_KEY=$${GUACOZY.DJANGO.FIELD_ENCRYPTION_KEY:?Django Field Encryption Key is required}
-      - DJANGO_DB_URL=postgres://$${GUACOZY.DJANGO.DATABASE_HOST:?Django Postgres Database Host is required}:$${GUACOZY.DJANGO.DATABASE_PORT:?Django Postgres Database Port is required}
-      - DJANGO_ALLOWED_HOSTS=$${GUACOZY.DJANGO.DJANGO_ALLOWED_HOSTS:-"*"}
+      - "DJANGO_SECRET_KEY=${GUACOZY.DJANGO.SECRET_KEY:?Django Secret Key is required}"
+      - "FIELD_ENCRYPTION_KEY=${GUACOZY.DJANGO.FIELD_ENCRYPTION_KEY:?Django Field Encryption Key is required}"
+      - "DJANGO_DB_URL=postgres://${GUACOZY.DJANGO.DATABASE_HOST:?Django Postgres Database Host is required}:${GUACOZY.DJANGO.DATABASE_PORT:?Django Postgres Database Port is required}"
+      - "DJANGO_ALLOWED_HOSTS=${GUACOZY.DJANGO.DJANGO_ALLOWED_HOSTS:-*}"
     expose:
-      - $${GUAC.EXPOSED_PORT.HTTP:-10080}:80
-      - $${GUAC.EXPOSED_PORT.HTTPS:-10443}:443
+      - "${GUAC.EXPOSED_PORT.HTTP:10080:80}"
+      - "${GUAC.EXPOSED_PORT.HTTPS:10443:443}"
     configs:
       - source: guac_conf
-        target: $${GUAC.GUACAMOLE_HOME}/guacamole.properties
+        target: "${GUAC.GUACAMOLE_HOME}/guacamole.properties"
+        mode: 0440
       - source: guac_logback_config
-        target: $${GUAC.GUACAMOLE_HOME}/logback.xml
+        target: "${GUAC.GUACAMOLE_HOME}/logback.xml"
+        mode: 0440
     depends_on:
-      - PostGuac
+      - postguac
 
-  Guac_D:
-    <<: *Base
-    container_name: Guac_D
+  guac-d:
+    <<: [*base]
+    container_name: guac-d
     image: guacamole/guacd:latest
-    network_mode: "[Guacozy]"
+    network_mode: "service:guacozy"
     privileged: true
-    #profiles:
-    #- Avocado
     configs:
       - source: guac_d_conf
-        target: /etc/guacamole/guacd.conf
-    secrets:
-      - guac_transit_cert
-      - guac_transit_key
+        target: "/etc/guacamole/guacd.conf"
+        mode: 0440
 
-  GuacFlared:
-    <<: [*Base, *FrontNet, *BackNet]
-    container_name: GuacFlared
+  guac-flared:
+    <<: [*base, *frontnet, *backnet] #
+    container_name: guac-flared
     image: cloudflare/cloudflared:latest
-    command: "docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token $${CLOUDFLARED.TUNNEL_TOKEN}"
-    env_file:
-      - $${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION:+$${GLOBAL.ENV_VAR_FILE.CLOUDFLARED.LOCATION}}
+    #   command: "docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token ${CLOUDFLARED.TUNNEL_TOKEN}"
     environment:
-      - TUNNEL_TOKEN=$${CLOUDFLARED.TUNNEL_TOKEN}
+      - "TUNNEL_TOKEN=${CLOUDFLARED.TUNNEL_TOKEN}"
     volumes:
       - cloudflared-vol:/etc/cloudflared
 
 networks:
-  FarmBreak:
-    name: $${NETWORK.EXTERNAL_NAME:-"FrontNet"}
+  farm-break:
     external: true
-  AvocadoFarm:
-    name: $${NETWORK.INTERNAL_NAME:-"BackNet"}
+    name: "${NETWORK.EXTERNAL_NAME}"
+  avocado-farm:
+    external: true
+    name: "${NETWORK.INTERNAL_NAME}"
+
+volumes:
+  postgres-db:
+    name: "${DATABASE.VOLUME_NAME}"
+    external: true
+  cloudflared-vol:
+    name: "${CLOUDFLARED.VOLUME_NAME}"
     external: true
 
 configs:
   guac_d_conf:
+    name: guac_d_conf
     content: |
       [daemon]
       pid_file = /var/run/guacd.pid
@@ -161,6 +100,7 @@ configs:
       server_key = $${GUAC_D.SERVER_KEY_LOCATION}
 
   guac_logback_config:
+    name: guac_logback_config
     content: |
       <configuration>
           <!-- Appender for debugging -->
@@ -176,26 +116,11 @@ configs:
       </configuration>
 
   guac_conf:
+    name: guac_conf
     content: |
       api-session-timeout: $${GUAC.API_SESSION_TIMEOUT:-60}
       available-languages: $${GUAC.AVAILABLE_LANGUAGES:-"en, de, es"}
       enable-environment-properties: $${GUAC.ENABLE_ENV_PROPERTIES:-true}
-      guacd-hostname: $${GUAC.GUAC_D.CONN_HOST:-localhost}
-      guacd-port: $${GUAC.GUAC_D.BIND_PORT:-4822}
-      guacd-ssl: $${GUAC.GUAC_D.USE_SSL:-false}
-
-volumes:
-  postgres-db:
-    name: $${DATABASE_VOLUME_NAME:-"postgres-db"}
-    external: true
-  cloudflared-vol:
-    name: $${CLOUDFLARED.VOLUME.SOURCE:-"cloudflared-vol"}
-    external: true
-
-secrets:
-  guac_transit_cert:
-    external: true
-    name: $${GUAC_CERTIFICATE}
-  guac_transit_key:
-    external: true
-    name: $${GUAC_CERTIFICATE_KEY}
+      guacd-hostname: $${GUAC.GUAC_D.CONN_HOST:-$${GUAC_D.BIND_HOST:-localhost}}
+      guacd-port: $${GUAC.GUAC_D.BIND_PORT:-$${GUAC_D.BIND_PORT:-4822}}
+      guacd-ssl: $${GUAC.GUAC_D.USE_SSL:-$${GUAC_D.BIND_USE_SSL:-false}}
