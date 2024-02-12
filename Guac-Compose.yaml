@@ -1,104 +1,118 @@
 ---
 version: "3.8"
-name: "post-guac-flared"
-
-x-backnet: &backnet
-  networks:
-    - avocado-farm
-
-x-frontnet: &frontnet
-  networks:
-    - farm-break
-
-x-base: &base
-  restart: ${RESTART:-${PROD:-unless-stopped}} # If RESTART is set & not empty, use it; else if PROD is set, use 'always'; else use 'unless-stopped';
+name: post-guac-flared
 
 services:
   postguac:
-    <<: [*base, *backnet]
+    restart: unless-stopped
     container_name: postguac
+    hostname: postguac
     image: rapidfort/postgresql:latest
     volumes:
       - postgres-db:/bitnami/postgresql
     environment:
-      - "POSTGRES_DATABASE=$${DATABASE.NAME:-guacamole}"
-      - "POSTGRES_USER=$${DATABASE.USER:-getguaced}"
-      - "POSTGRESQL_PASSWORD=$${DATABASE.PASSWORD:-herecomestheguac}"
-      - "POSTGRESQL_PASSWORD_FILE=$${DATABASE.PASSWORD_FILE}"
+      - POSTGRES_DATABASE=
+      - POSTGRES_USER=
+      - POSTGRESQL_PASSWORD=
+    networks:
+      - avocado-farm
 
   guacozy:
-    <<: [*base, *frontnet, *backnet] #
+    restart: unless-stopped
     container_name: guacozy
+    hostname: guacozy
     image: guacozy/guacozy-server:latest
     environment:
-      - "DJANGO_SECRET_KEY=${GUACOZY.DJANGO.SECRET_KEY:?Django Secret Key is required}"
-      - "FIELD_ENCRYPTION_KEY=${GUACOZY.DJANGO.FIELD_ENCRYPTION_KEY:?Django Field Encryption Key is required}"
-      - "DJANGO_DB_URL=postgres://${GUACOZY.DJANGO.DATABASE_HOST:?Django Postgres Database Host is required}:${GUACOZY.DJANGO.DATABASE_PORT:?Django Postgres Database Port is required}"
-      - "DJANGO_ALLOWED_HOSTS=${GUACOZY.DJANGO.DJANGO_ALLOWED_HOSTS:-*}"
+      DJANGO_SECRET_KEY:
+      FIELD_ENCRYPTION_KEY:
+      DJANGO_DB_URL: postgres://user:password@host:port/db-name
+      DJANGO_ALLOWED_HOSTS: "*"
+      SUPERUSER_NAME:
+      SUPERUSER_EMAIL:
+      SUPERUSER_PASSWORD:
     expose:
-      - "${GUAC.EXPOSED_PORT.HTTP:10080:80}"
-      - "${GUAC.EXPOSED_PORT.HTTPS:10443:443}"
+      - 10080:80
+      - 10443:443
     configs:
       - source: guac_conf
-        target: "${GUAC.GUACAMOLE_HOME}/guacamole.properties"
-        mode: 0440
+        target: /etc/guacamole/guacamole.properties
+        mode: 662
       - source: guac_logback_config
-        target: "${GUAC.GUACAMOLE_HOME}/logback.xml"
-        mode: 0440
+        target: /etc/guacamole/logback.xml
+        mode: 662
+    networks:
+      - farm-break
+      - avocado-farm
     depends_on:
       - postguac
 
   guac-d:
-    <<: [*base]
+    restart: unless-stopped
     container_name: guac-d
+    hostname: guac-d
     image: guacamole/guacd:latest
-    network_mode: "service:guacozy"
     privileged: true
-    configs:
-      - source: guac_d_conf
-        target: "/etc/guacamole/guacd.conf"
-        mode: 0440
+    environment:
+      - GUACD_LOG_LEVEL=info
+      - GUACD_HOST=guac-d
+      - GUACD_PORT=4822
+    networks:
+      - avocado-farm
+
+    #  - GUACDD_SERVER_CERTIFICATE=
+    #  - GUACD_SERVER_KEY=
+    #configs:
+    #  - source: guac_d_conf
+    #    target: /etc/guacamole/guacd.conf
+    #    mode: 772
+    #    uid: "1000"
+    #    gid: "1000"
 
   guac-flared:
-    <<: [*base, *frontnet, *backnet] #
+    restart: unless-stopped
     container_name: guac-flared
+    hostname: guac-flared
     image: cloudflare/cloudflared:latest
-    #   command: "docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token ${CLOUDFLARED.TUNNEL_TOKEN}"
+    privileged: true
+    command: "tunnel run $$TUNNEL_UUID"
+    entrypoint: "cloudflared"
+    user: root
     environment:
-      - "TUNNEL_TOKEN=${CLOUDFLARED.TUNNEL_TOKEN}"
-    volumes:
-      - cloudflared-vol:/etc/cloudflared
+      TUNNEL_UUID: ""
+      TUNNEL_TOKEN: ""
+      TUNNEL_RETRIES: 5
+      TUNNEL_TRANSPORT_PROTOCOL: auto
+      TUNNEL_METRICS: localhost:12345
+      TUNNEL_LOGLEVEL: info
+      TUNNEL_LOGFILE: /var/log/cloudflared.log
+      TUNNEL_ORIGIN_CERT: /etc/cloudflared/cert.pem
+      NO_AUTOUPDATE: false
+    networks:
+      - farm-break
+      - avocado-farm
+    secrets:
+      - source: cloudflared-origin-cert
+        target: /etc/cloudflared/cert.pem
 
 networks:
   farm-break:
     external: true
-    name: "${NETWORK.EXTERNAL_NAME}"
+    name: farm-break
   avocado-farm:
     external: true
-    name: "${NETWORK.INTERNAL_NAME}"
+    name: avocado-farm
 
 volumes:
   postgres-db:
-    name: "${DATABASE.VOLUME_NAME}"
+    name: postguacflared-vol
     external: true
-  cloudflared-vol:
-    name: "${CLOUDFLARED.VOLUME_NAME}"
-    external: true
+
+secrets:
+  cloudflared-origin-cert:
+    name: cloudflared-origin-cert
+    file: ./cert.pem
 
 configs:
-  guac_d_conf:
-    name: guac_d_conf
-    content: |
-      [daemon]
-      pid_file = /var/run/guacd.pid
-      log_level = $${GUAC_D.LOG_LEVEL:-info}
-      [server]
-      bind_host = $${GUAC_D.BIND_HOST:-localhost}
-      bind_port = $${GUAC_D.BIND_PORT:-4822}
-      [ssl]
-      server_certificate = $${GUAC_D.SERVER_CERT_LOCATION}
-      server_key = $${GUAC_D.SERVER_KEY_LOCATION}
-
   guac_logback_config:
     name: guac_logback_config
     content: |
@@ -106,11 +120,11 @@ configs:
           <!-- Appender for debugging -->
           <appender name="GUAC-DEBUG" class="ch.qos.logback.core.ConsoleAppender">
               <encoder>
-                  <pattern>"$${GUAC.LOGBACK.PATTERN:-\"%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n\"}"</pattern>
+                  <pattern>"%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"</pattern>
               </encoder>
           </appender>
           <!-- Log at DEBUG level -->
-          <root level="$${GUAC.LOGBACK.LOG_LEVEL:-info}">
+          <root level="info">
               <appender-ref ref="GUAC-DEBUG"/>
           </root>
       </configuration>
@@ -118,9 +132,9 @@ configs:
   guac_conf:
     name: guac_conf
     content: |
-      api-session-timeout: $${GUAC.API_SESSION_TIMEOUT:-60}
-      available-languages: $${GUAC.AVAILABLE_LANGUAGES:-"en, de, es"}
-      enable-environment-properties: $${GUAC.ENABLE_ENV_PROPERTIES:-true}
-      guacd-hostname: $${GUAC.GUAC_D.CONN_HOST:-$${GUAC_D.BIND_HOST:-localhost}}
-      guacd-port: $${GUAC.GUAC_D.BIND_PORT:-$${GUAC_D.BIND_PORT:-4822}}
-      guacd-ssl: $${GUAC.GUAC_D.USE_SSL:-$${GUAC_D.BIND_USE_SSL:-false}}
+      api-session-timeout: 60
+      available-languages: "en, de, es"
+      enable-environment-properties: true
+      guacd-hostname: guac-d
+      guacd-port: 4822
+      guacd-ssl: false

@@ -1,2 +1,5 @@
 /.vscode
-*-*.env
+*.env
+notes
+cert.pem
+compose.yaml
